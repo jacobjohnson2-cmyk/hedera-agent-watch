@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hedera AI Agent Watch — Live On-Chain Activity</title>
-  <meta name="description" content="Live dashboard showing AI agent activity on the Hedera network. Real HCS consensus messages, HCS-10 OpenConvAI agent operations, and on-chain stats.">
+  <title>The Agent Observatory — Live Observations of AI Agents on Hedera</title>
+  <meta name="description" content="The first public observatory for AI agent behavior. Most AI agents are unobservable — we watch the ones running on Hedera, where every action is cryptographically recorded. Live HCS messages, HCS-10 operations, SDK adoption, and cost-per-call.">
+  <meta property="og:title" content="The Agent Observatory">
+  <meta property="og:description" content="Most AI agents are unobservable. We watch the ones that aren't.">
+  <meta property="og:type" content="website">
   <style>
     :root {
       --bg:           #080d1a;
@@ -391,8 +394,8 @@
 
 <header class="header">
   <div class="header-brand">
-    <h1>Hedera AI Agent Watch</h1>
-    <p>Live on-chain AI agent activity · <span id="network-label">Hedera Mainnet</span></p>
+    <h1>The Agent Observatory</h1>
+    <p>Most AI agents are unobservable. We watch the ones that aren't. · <span id="network-label">Hedera Mainnet</span></p>
   </div>
   <div class="header-right">
     <div class="net-toggle">
@@ -411,6 +414,16 @@
 </div>
 
 <div class="main">
+
+  <!-- Manifesto banner -->
+  <div style="background:linear-gradient(135deg,rgba(124,58,237,0.08),rgba(245,158,11,0.04));border:1px solid var(--border);border-radius:12px;padding:18px 22px;margin-bottom:24px">
+    <div style="font-size:11px;font-weight:700;color:var(--accent-light);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Observation #1</div>
+    <div style="font-size:14px;line-height:1.6;color:var(--text)">
+      AI agents are the fastest-growing software category in history — and the most opaque. Almost every agent action happens in private logs or vendor-controlled databases.
+      <strong style="color:var(--accent-light)">Hedera is the exception.</strong>
+      Every HCS message, every HCS-10 handshake, every agent payment is cryptographically recorded. This page is the live feed.
+    </div>
+  </div>
 
   <!-- Stats -->
   <div class="stats">
@@ -458,16 +471,33 @@
   <!-- Main grid -->
   <div class="grid">
 
-    <!-- Feed -->
+    <!-- Active Agents Leaderboard -->
     <div class="panel">
       <div class="panel-head">
-        <span class="panel-title">Live HCS Submit Message Feed</span>
+        <span class="panel-title">Active Agents Leaderboard
+          <span style="font-weight:400;color:var(--muted);font-size:11px">— who's posting to HCS right now</span>
+        </span>
         <span class="panel-sub" id="feed-label">Loading…</span>
+      </div>
+      <!-- Census row -->
+      <div id="census" style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-bottom:1px solid var(--border)">
+        <div style="padding:14px 18px;border-right:1px solid var(--border)">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;font-weight:600">Unique agents</div>
+          <div style="font-size:22px;font-weight:700;color:var(--accent-light);margin-top:4px" id="c-unique">—</div>
+        </div>
+        <div style="padding:14px 18px;border-right:1px solid var(--border)">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;font-weight:600">HCS-10 tagged</div>
+          <div style="font-size:22px;font-weight:700;color:var(--amber);margin-top:4px" id="c-hcs10">—</div>
+        </div>
+        <div style="padding:14px 18px">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;font-weight:600">Topics in play</div>
+          <div style="font-size:22px;font-weight:700;color:var(--green);margin-top:4px" id="c-topics">—</div>
+        </div>
       </div>
       <div class="feed" id="feed">
         <div class="feed-placeholder">
           <div class="spinner"></div>
-          Fetching live data from Hedera Mirror Node…
+          Surveying the most recent agent activity…
         </div>
       </div>
     </div>
@@ -524,7 +554,12 @@
 </div>
 
 <footer class="footer">
-  Standards stewarded by <a href="https://hol.org" target="_blank">Hashgraph Online (HOL)</a> · Data from <a href="https://mainnet.mirrornode.hedera.com/api/v1/docs/" target="_blank">Hedera Mirror Node</a> · Refreshes every 30s
+  <strong style="color:var(--text)">The Agent Observatory</strong> — observations are sourced from <a href="https://mainnet.mirrornode.hedera.com/api/v1/docs/" target="_blank">Hedera Mirror Node</a> (public REST API, no auth). Standards stewarded by <a href="https://hol.org" target="_blank">Hashgraph Online (HOL)</a>. Refreshes every 30s.
+  <br><br>
+  <a href="https://github.com/jacobjohnson2-cmyk/awesome-hedera-ai" target="_blank">Reference Index</a> ·
+  <a href="https://github.com/jacobjohnson2-cmyk/hedera-agent-quickstart" target="_blank">Quickstart</a> ·
+  <a href="https://github.com/jacobjohnson2-cmyk/claude-hedera-quickstart" target="_blank">Claude Quickstart</a> ·
+  <a href="https://github.com/jacobjohnson2-cmyk/agent-observatory" target="_blank">Source</a>
 </footer>
 
 <script>
@@ -632,11 +667,24 @@
 
   /* ══ FEED ════════════════════════════════════════════════ */
 
+  // Sample the last ~300 HCS submit-message transactions, group by payer.
+  // Three Mirror Node calls — well under the 50 RPS limit.
   async function fetchTxns() {
-    const res = await fetch(`${MIRROR}/transactions?transactiontype=CONSENSUSSUBMITMESSAGE&limit=25&order=desc`);
-    if (!res.ok) throw new Error(`Mirror node ${res.status}`);
-    const { transactions=[] } = await res.json();
-    return transactions;
+    const all = [];
+    let nextLink = null;
+    for (let i = 0; i < 3; i++) {
+      const url = nextLink
+        ? `${MIRROR.replace('/api/v1','')}${nextLink}`
+        : `${MIRROR}/transactions?transactiontype=CONSENSUSSUBMITMESSAGE&limit=100&order=desc`;
+      const res = await fetch(url);
+      if (!res.ok) { if (!all.length) throw new Error(`Mirror node ${res.status}`); break; }
+      const data = await res.json();
+      const txns = data.transactions || [];
+      all.push(...txns);
+      nextLink = data.links?.next || null;
+      if (!nextLink || txns.length < 100) break;
+    }
+    return all;
   }
 
   function render(txns) {
@@ -644,34 +692,63 @@
     const label = document.getElementById('feed-label');
     if (!txns.length) { feed.innerHTML='<div class="feed-placeholder">No recent HCS messages found.</div>'; return; }
 
+    // Aggregate per-payer
     const topicFreq = {};
-    const rows = txns.map(tx => {
+    const agents = {};
+    for (const tx of txns) {
       const memo    = b64decode(tx.memo_base64);
       const isAgent = /hcs-?10/i.test(memo);
       const payer   = tx.payer_account_id || '—';
       const topic   = tx.entity_id        || '—';
       if (topic!=='—') topicFreq[topic] = (topicFreq[topic]||0)+1;
-      const isNew   = !knownIds.has(tx.transaction_id);
+
+      if (!agents[payer]) {
+        agents[payer] = { payer, msgs:0, topics:new Set(), hcs10:0, lastTs:tx.consensus_timestamp, lastMemo:'' };
+      }
+      const a = agents[payer];
+      a.msgs++;
+      if (topic!=='—') a.topics.add(topic);
+      if (isAgent) { a.hcs10++; if (!a.lastMemo) a.lastMemo = memo; }
+      if (tx.consensus_timestamp > a.lastTs) a.lastTs = tx.consensus_timestamp;
+    }
+
+    const ranked = Object.values(agents).sort((a,b)=>b.msgs-a.msgs).slice(0,15);
+    const hcs10AgentCount = Object.values(agents).filter(a=>a.hcs10>0).length;
+
+    // Census
+    document.getElementById('c-unique').textContent = Object.keys(agents).length.toLocaleString();
+    document.getElementById('c-hcs10').textContent  = hcs10AgentCount.toLocaleString();
+    document.getElementById('c-topics').textContent = Object.keys(topicFreq).length.toLocaleString();
+
+    const maxMsgs = ranked[0]?.msgs || 1;
+    const rows = ranked.map((a,i) => {
+      const bar = Math.round((a.msgs / maxMsgs) * 100);
+      const isAgent = a.hcs10 > 0;
       return `
-      <div class="tx${isAgent?' is-hcs10':''}${isNew?' is-new':''}">
-        <div>
-          <div class="tx-payer">${payer}</div>
-          <div class="tx-topic">→ <a href="${HASHSCAN}/${topic}" target="_blank" rel="noopener"
-            style="color:var(--muted);text-decoration:none;border-bottom:1px dotted var(--border)"
-            onmouseover="this.style.color='var(--accent-light)'"
-            onmouseout="this.style.color='var(--muted)'">topic ${topic}</a></div>
-          ${isAgent?`<div class="tx-memo">${memo.slice(0,48)}${memo.length>48?'…':''}</div><span class="tag">HCS-10</span>`:''}
+      <div class="tx${isAgent?' is-hcs10':''}" style="grid-template-columns:24px 1fr auto">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;text-align:right;padding-right:2px">${i+1}</div>
+        <div style="min-width:0">
+          <div class="tx-payer" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <a href="${HASHSCAN.replace('/topic','/account')}/${a.payer}" target="_blank" rel="noopener"
+              style="color:var(--accent-light);text-decoration:none">${a.payer}</a>
+            ${isAgent?`<span class="tag">HCS-10 · ${a.hcs10}</span>`:''}
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">
+            ${a.topics.size} topic${a.topics.size>1?'s':''} · last seen ${timeAgo(a.lastTs)}
+          </div>
+          <div style="margin-top:6px;height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+            <div style="height:100%;width:${bar}%;background:linear-gradient(90deg,var(--accent),var(--accent-light));border-radius:2px"></div>
+          </div>
         </div>
         <div class="tx-meta">
-          <div class="tx-time">${timeAgo(tx.consensus_timestamp)}</div>
-          <div class="tx-fee">${fmtFee(tx.charged_tx_fee)}</div>
+          <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1">${a.msgs}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.5px">msgs</div>
         </div>
       </div>`;
     });
 
     feed.innerHTML = rows.join('');
-    knownIds = new Set(txns.map(t=>t.transaction_id));
-    label.textContent = `${txns.length} most recent`;
+    label.textContent = `top ${ranked.length} of ${Object.keys(agents).length} · last ${txns.length} msgs`;
     renderTopics(topicFreq);
   }
 
