@@ -415,14 +415,14 @@
   <!-- Stats -->
   <div class="stats">
     <div class="stat">
-      <div class="stat-label">SDK downloads / week</div>
+      <div class="stat-label">Hedera AI SDK installs / wk</div>
       <div class="stat-value purple" id="s-sdk">—</div>
-      <div class="stat-sub">hedera-agent-kit · npm · 7d</div>
+      <div class="stat-sub" id="s-sdk-sub">@hashgraph/* + @hiero-ledger/sdk · npm · 7d</div>
     </div>
     <div class="stat">
-      <div class="stat-label">MCP installs / week</div>
+      <div class="stat-label">HCS-10 + MCP installs / wk</div>
       <div class="stat-value amber" id="s-mcp">—</div>
-      <div class="stat-sub">hedera-mcp-server · npm · 7d</div>
+      <div class="stat-sub" id="s-mcp-sub">standards-sdk + MCP servers · npm · 7d</div>
     </div>
     <div class="stat">
       <div class="stat-label">HCS messages / day</div>
@@ -737,13 +737,42 @@
     } catch { /* leave as — */ }
   }
 
+  // Packages tracked for ecosystem KPIs. Sums give a real composite signal
+  // rather than depending on one possibly-renamed package.
+  const SDK_PACKAGES = [
+    '@hashgraph/hedera-agent-kit',          // Agent Kit v4 core
+    '@hashgraph/hedera-agent-kit-ai-sdk',   // Vercel AI SDK bridge (Agent Lab default)
+    '@hiero-ledger/sdk',                    // Rebranded core ledger SDK (Linux Foundation)
+  ];
+  const HCS_MCP_PACKAGES = [
+    '@hashgraphonline/standards-sdk',       // HCS-10 standard implementation
+    '@hashgraphonline/standards-agent-kit', // HCS-10 LangChain toolkit
+    '@hedera-mcp/hedera-mcp-server',        // Official MCP server (if published)
+  ];
+
+  async function sumDownloads(packages) {
+    const results = await Promise.all(packages.map(p => fetchNpmDownloads(p)));
+    const pairs = packages.map((p,i) => [p, results[i]]);
+    const total = results.reduce((s,n) => s + (n||0), 0);
+    const found = pairs.filter(([,n]) => n !== null && n > 0);
+    return { total, found };
+  }
+
   async function refreshEcosystemStats() {
-    const [sdk, mcp] = await Promise.all([
-      fetchNpmDownloads('hedera-agent-kit'),
-      fetchNpmDownloads('@hedera-mcp/hedera-mcp-server'),
+    const [sdkAgg, mcpAgg] = await Promise.all([
+      sumDownloads(SDK_PACKAGES),
+      sumDownloads(HCS_MCP_PACKAGES),
     ]);
-    document.getElementById('s-sdk').textContent = fmtNum(sdk);
-    document.getElementById('s-mcp').textContent = fmtNum(mcp);
+    document.getElementById('s-sdk').textContent = fmtNum(sdkAgg.total || null);
+    document.getElementById('s-mcp').textContent = fmtNum(mcpAgg.total || null);
+    if (sdkAgg.found.length) {
+      document.getElementById('s-sdk-sub').textContent =
+        `${sdkAgg.found.length} pkg${sdkAgg.found.length>1?'s':''} · npm · 7d`;
+    }
+    if (mcpAgg.found.length) {
+      document.getElementById('s-mcp-sub').textContent =
+        `${mcpAgg.found.length} pkg${mcpAgg.found.length>1?'s':''} · npm · 7d`;
+    }
     fetchCostStat();
   }
 
