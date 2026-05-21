@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hedera AI Agent Watch — Live On-Chain Activity</title>
+  <meta name="description" content="Live dashboard showing AI agent activity on the Hedera network. Real HCS consensus messages, HCS-10 OpenConvAI agent operations, and on-chain stats.">
+  <style>
+    :root {
+      --bg:           #080d1a;
+      --surface:      #0f1729;
+      --surface2:     #141e35;
+      --border:       #1e2d4a;
+      --accent:       #7c3aed;
+      --accent-light: #a78bfa;
+      --green:        #10b981;
+      --amber:        #f59e0b;
+      --text:         #e2e8f0;
+      --muted:        #64748b;
+      --red:          #ef4444;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* ── Header ── */
+    .header {
+      border-bottom: 1px solid var(--border);
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .header-brand h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.4px;
+    }
+    .header-brand p {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .live-pill {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      padding: 5px 12px;
+      border-radius: 99px;
+      font-size: 12px;
+      color: var(--green);
+      font-weight: 500;
+    }
+    .live-dot {
+      width: 7px;
+      height: 7px;
+      background: var(--green);
+      border-radius: 50%;
+      animation: blink 2s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* ── Network toggle ── */
+    .net-toggle {
+      display: flex;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .net-btn {
+      padding: 5px 13px;
+      cursor: pointer;
+      color: var(--muted);
+      border: none;
+      background: transparent;
+      transition: background .15s, color .15s;
+      white-space: nowrap;
+    }
+    .net-btn.active-mainnet { background: #1e3a5f; color: #60a5fa; }
+    .net-btn.active-testnet { background: #3b1f5e; color: var(--accent-light); }
+
+    /* ── Progress bar ── */
+    .refresh-track {
+      height: 2px;
+      background: var(--border);
+      overflow: hidden;
+    }
+    .refresh-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-light));
+      width: 100%;
+    }
+
+    /* ── Main layout ── */
+    .main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 32px 48px;
+    }
+
+    /* ── Stats row ── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+    }
+    .stat-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .stat-value {
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: -2px;
+      margin-top: 6px;
+      line-height: 1;
+    }
+    .stat-value.purple { color: var(--accent-light); }
+    .stat-value.amber  { color: var(--amber); }
+    .stat-value.green  { color: var(--green); }
+    .stat-sub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 5px;
+    }
+
+    /* ── Content grid ── */
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 20px;
+    }
+
+    /* ── Panel ── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .panel-head {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .panel-title {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .panel-sub {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ── Feed ── */
+    .feed {
+      overflow-y: auto;
+      max-height: 540px;
+    }
+    .tx {
+      padding: 13px 18px;
+      border-bottom: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: start;
+      transition: background .12s;
+    }
+    .tx:last-child { border-bottom: none; }
+    .tx:hover { background: rgba(255,255,255,.02); }
+    .tx.is-hcs10 { border-left: 3px solid var(--amber); }
+    .tx.is-new { animation: flashIn .6s ease-out; }
+    @keyframes flashIn {
+      0% { background: rgba(124, 58, 237, .15); }
+      100% { background: transparent; }
+    }
+
+    .tx-payer {
+      font-size: 12px;
+      font-weight: 600;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      color: var(--accent-light);
+    }
+    .tx-topic {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+      font-family: monospace;
+    }
+    .tx-memo {
+      font-size: 10px;
+      color: var(--amber);
+      margin-top: 3px;
+      font-family: monospace;
+      word-break: break-all;
+    }
+    .tag {
+      display: inline-block;
+      margin-top: 4px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .3px;
+      background: rgba(245,158,11,.15);
+      color: var(--amber);
+    }
+    .tx-meta { text-align: right; }
+    .tx-time {
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .tx-fee {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    .feed-placeholder {
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .feed-placeholder .spinner {
+      width: 28px;
+      height: 28px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      margin: 0 auto 14px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .feed-error {
+      padding: 20px 18px;
+      font-size: 12px;
+      color: var(--red);
+      border-left: 3px solid var(--red);
+      margin: 12px;
+      background: rgba(239,68,68,.07);
+      border-radius: 6px;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar { display: flex; flex-direction: column; gap: 16px; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+    }
+    .card h3 {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .7px;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .card p {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+    .card p + p { margin-top: 8px; }
+
+    .metric {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      font-size: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .metric:last-child { border-bottom: none; padding-bottom: 0; }
+    .metric .k { color: var(--muted); }
+    .metric .v { font-weight: 600; }
+    .metric .v.green { color: var(--green); }
+
+    .btn {
+      display: block;
+      text-align: center;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: opacity .15s;
+      margin-top: 10px;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-outline  {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .explain-box {
+      background: rgba(124,58,237,.08);
+      border: 1px solid rgba(124,58,237,.25);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.6;
+      margin-top: 10px;
+    }
+    .explain-box strong { color: var(--accent-light); }
+
+    /* ── Footer ── */
+    .footer {
+      text-align: center;
+      padding: 24px 32px;
+      font-size: 11px;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+    .footer a { color: var(--accent-light); text-decoration: none; }
+
+    /* ── Trend chart ── */
+    .chart-panel { margin-bottom: 20px; }
+    .chart-body  { padding: 16px 20px 12px; }
+    .chart-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 80px;
+      color: var(--muted);
+      font-size: 12px;
+      gap: 10px;
+    }
+    .chart-loading .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      flex-shrink: 0;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .grid  { grid-template-columns: 1fr; }
+      .main  { padding: 20px 16px 40px; }
+      .header { padding: 16px; }
+    }
+    @media (max-width: 480px) {
+      .stats { grid-template-columns: 1fr 1fr; }
+      .stat-value { font-size: 28px; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-brand">
+    <h1>Hedera AI Agent Watch</h1>
+    <p>Live on-chain AI agent activity · <span id="network-label">Hedera Mainnet</span></p>
+  </div>
+  <div class="header-right">
+    <div class="net-toggle">
+      <button class="net-btn active-mainnet" id="btn-mainnet" onclick="setNetwork('mainnet')">Mainnet</button>
+      <button class="net-btn" id="btn-testnet" onclick="setNetwork('testnet')">Testnet</button>
+    </div>
+    <div class="live-pill">
+      <div class="live-dot"></div>
+      <span id="last-updated">Connecting…</span>
+    </div>
+  </div>
+</header>
+
+<div class="refresh-track">
+  <div class="refresh-fill" id="refresh-fill"></div>
+</div>
+
+<div class="main">
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">SDK downloads / week</div>
+      <div class="stat-value purple" id="s-sdk">—</div>
+      <div class="stat-sub">hedera-agent-kit · npm · 7d</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">MCP installs / week</div>
+      <div class="stat-value amber" id="s-mcp">—</div>
+      <div class="stat-sub">hedera-mcp-server · npm · 7d</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">HCS messages / day</div>
+      <div class="stat-value" id="s-daily">—</div>
+      <div class="stat-sub" id="s-daily-sub">loads with chart below ↓</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Cost per 1,000 msgs</div>
+      <div class="stat-value green" id="s-cost">—</div>
+      <div class="stat-sub">live calc · USD-stable fees</div>
+    </div>
+  </div>
+
+  <!-- Trend -->
+  <div class="panel chart-panel">
+    <div class="panel-head">
+      <span class="panel-title">Activity Trend <span style="font-weight:400;color:var(--muted);font-size:11px" id="chart-title"></span></span>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div class="net-toggle">
+          <button class="net-btn active-mainnet" id="r-hours" onclick="setRange('hours')">Hours</button>
+          <button class="net-btn" id="r-days"  onclick="setRange('days')">Days</button>
+          <button class="net-btn" id="r-weeks" onclick="setRange('weeks')">Weeks</button>
+          <button class="net-btn" id="r-month" onclick="setRange('month')">Month</button>
+        </div>
+        <span class="panel-sub" id="chart-label">Loading…</span>
+      </div>
+    </div>
+    <div class="chart-body" id="chart-body">
+      <div class="chart-loading"><div class="spinner"></div> Fetching 24h of data…</div>
+    </div>
+  </div>
+
+  <!-- Main grid -->
+  <div class="grid">
+
+    <!-- Feed -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Live HCS Submit Message Feed</span>
+        <span class="panel-sub" id="feed-label">Loading…</span>
+      </div>
+      <div class="feed" id="feed">
+        <div class="feed-placeholder">
+          <div class="spinner"></div>
+          Fetching live data from Hedera Mirror Node…
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+
+      <div class="card">
+        <h3>What is this?</h3>
+        <p>Each row is a real transaction on Hedera Mainnet where an account submitted a message to a Hedera Consensus Service (HCS) topic.</p>
+        <p>Rows highlighted in <span style="color:var(--amber)">amber</span> carry an <strong style="color:var(--accent-light)">HCS-10 OpenConvAI</strong> memo — the standard AI agents use to discover and communicate with each other on-chain.</p>
+        <div class="explain-box">
+          <strong>HCS is the AI agent messaging layer.</strong> Every agent interaction — registration, handshake, task request, payment — flows through an HCS topic. You're watching it happen in real time.
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Hedera by the numbers</h3>
+        <div class="metric"><span class="k">Finality</span><span class="v green">~3 seconds</span></div>
+        <div class="metric"><span class="k">HCS message fee</span><span class="v">~$0.0001</span></div>
+        <div class="metric"><span class="k">Fee predictability</span><span class="v green">USD-denominated</span></div>
+        <div class="metric"><span class="k">Agent standard</span><span class="v">HCS-10 OpenConvAI</span></div>
+        <div class="metric"><span class="k">Testnet agents</span><span class="v">300+</span></div>
+        <div class="metric"><span class="k">Mirror Node API</span><span class="v green">Public · No auth</span></div>
+      </div>
+
+      <div class="card">
+        <h3>Build or register an agent</h3>
+        <p>Spawn an HCS-10 agent in minutes. Get a verifiable on-chain identity. Appear in the OpenConvAI registry.</p>
+        <a class="btn btn-primary" href="https://moonscape.tech/openconvai" target="_blank" rel="noopener">Browse Agent Registry →</a>
+        <a class="btn btn-outline"  href="https://portal.hedera.com/agent-lab" target="_blank" rel="noopener">Build with Agent Lab</a>
+      </div>
+
+      <div class="card" id="topics-card">
+        <h3>Active Topics <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px" id="topics-count"></span></h3>
+        <div id="topics-list"><div class="chart-loading" style="height:48px"><div class="spinner"></div></div></div>
+      </div>
+
+      <div class="card">
+        <h3>Resources</h3>
+        <p>The full Hedera AI stack — SDKs, MCP servers, standards, payment rails — catalogued in one place.</p>
+        <a class="btn btn-outline" href="https://github.com/YOUR_USERNAME/awesome-hedera-ai" target="_blank" rel="noopener">awesome-hedera-ai →</a>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<footer class="footer">
+  Data: <a href="https://mainnet.mirrornode.hedera.com/api/v1/docs/" target="_blank">Hedera Mirror Node</a> (public REST API, no auth) ·
+  HCS-10 standard: <a href="https://hashgraphonline.com" target="_blank">Hashgraph Online</a> ·
+  Refreshes every 30s
+</footer>
+
+<script>
+  let NETWORK       = 'mainnet';
+  let MIRROR        = 'https://mainnet.mirrornode.hedera.com/api/v1';
+  let HASHSCAN      = 'https://hashscan.io/mainnet/topic';
+  const REFRESH       = 30_000;
+  const TREND_REFRESH = 5 * 60_000;
+
+  const RANGES = {
+    hours: { n:8,  secs:3*3600,      cap:5000,  label: ts => fmtHour(ts),  title:'last 24h · 3h buckets' },
+    days:  { n:7,  secs:24*3600,     cap:5000,  label: ts => fmtDay(ts),   title:'last 7 days' },
+    weeks: { n:4,  secs:7*24*3600,   cap:10000, label: ts => fmtDate(ts),  title:'last 4 weeks' },
+    month: { n:10, secs:3*24*3600,   cap:5000,  label: ts => fmtDate(ts),  title:'last 30 days · 3d buckets' },
+  };
+  let currentRange = 'hours';
+
+  let knownIds    = new Set();
+  const topicMemo = {};
+
+  function setNetwork(net) {
+    if (net === NETWORK) return;
+    NETWORK  = net;
+    MIRROR   = `https://${net}.mirrornode.hedera.com/api/v1`;
+    HASHSCAN = `https://hashscan.io/${net}/topic`;
+
+    // Update UI
+    document.getElementById('network-label').textContent =
+      net === 'mainnet' ? 'Hedera Mainnet' : 'Hedera Testnet';
+    document.getElementById('btn-mainnet').className =
+      'net-btn' + (net === 'mainnet' ? ' active-mainnet' : '');
+    document.getElementById('btn-testnet').className =
+      'net-btn' + (net === 'testnet' ? ' active-testnet' : '');
+
+    // Clear caches and reload everything
+    knownIds = new Set();
+    Object.keys(topicMemo).forEach(k => delete topicMemo[k]);
+    document.getElementById('feed').innerHTML =
+      '<div class="feed-placeholder"><div class="spinner"></div></div>';
+    document.getElementById('chart-body').innerHTML =
+      '<div class="chart-loading"><div class="spinner"></div> Fetching 24h of data…</div>';
+    document.getElementById('topics-list').innerHTML =
+      '<div class="chart-loading" style="height:48px"><div class="spinner"></div></div>';
+
+    refresh();
+    refreshTrend();
+  }
+
+  /* ══ HELPERS ════════════════════════════════════════════ */
+
+  function b64decode(str) { try { return atob(str||''); } catch { return ''; } }
+  function timeAgo(ts) {
+    const s = Date.now()/1000 - parseFloat(ts);
+    if (s<60)    return `${Math.round(s)}s ago`;
+    if (s<3600)  return `${Math.round(s/60)}m ago`;
+    if (s<86400) return `${Math.round(s/3600)}h ago`;
+    return `${Math.round(s/86400)}d ago`;
+  }
+  function fmtFee(t) {
+    const h=(t||0)/1e8;
+    return h===0?'—':h<0.0001?'<0.0001 ℏ':`${h.toFixed(4)} ℏ`;
+  }
+  function fmtNum(n) {
+    if (n===null||n===undefined) return '—';
+    if (n>=1000000) return `${(n/1000000).toFixed(1)}M`;
+    if (n>=1000)    return `${(n/1000).toFixed(1)}k`;
+    return String(n);
+  }
+  function fmtHour(ts) {
+    const h=new Date(ts*1000).getHours();
+    return h===0?'12am':h===12?'12pm':h<12?`${h}am`:`${h-12}pm`;
+  }
+  function fmtDay(ts)  { return new Date(ts*1000).toLocaleDateString('en',{weekday:'short'}); }
+  function fmtDate(ts) { return new Date(ts*1000).toLocaleDateString('en',{month:'short',day:'numeric'}); }
+
+  /* ══ NETWORK / RANGE SWITCHING ══════════════════════════ */
+
+  function setNetwork(net) {
+    if (net===NETWORK) return;
+    NETWORK  = net;
+    MIRROR   = `https://${net}.mirrornode.hedera.com/api/v1`;
+    HASHSCAN = `https://hashscan.io/${net}/topic`;
+    document.getElementById('network-label').textContent = net==='mainnet'?'Hedera Mainnet':'Hedera Testnet';
+    document.getElementById('btn-mainnet').className = 'net-btn'+(net==='mainnet'?' active-mainnet':'');
+    document.getElementById('btn-testnet').className = 'net-btn'+(net==='testnet'?' active-testnet':'');
+    knownIds = new Set();
+    Object.keys(topicMemo).forEach(k=>delete topicMemo[k]);
+    document.getElementById('feed').innerHTML        = '<div class="feed-placeholder"><div class="spinner"></div></div>';
+    document.getElementById('chart-body').innerHTML  = '<div class="chart-loading"><div class="spinner"></div> Loading…</div>';
+    document.getElementById('topics-list').innerHTML = '<div class="chart-loading" style="height:48px"><div class="spinner"></div></div>';
+    refresh(); refreshTrend();
+  }
+
+  function setRange(r) {
+    if (r===currentRange) return;
+    currentRange = r;
+    ['hours','days','weeks','month'].forEach(id => {
+      document.getElementById(`r-${id}`).className = 'net-btn'+(id===r?' active-mainnet':'');
+    });
+    document.getElementById('chart-body').innerHTML = '<div class="chart-loading"><div class="spinner"></div> Loading…</div>';
+    document.getElementById('chart-label').textContent = 'Loading…';
+    if (r!=='hours') document.getElementById('s-daily').textContent = '—'; // only hours fills this
+    refreshTrend();
+  }
+
+  /* ══ FEED ════════════════════════════════════════════════ */
+
+  async function fetchTxns() {
+    const res = await fetch(`${MIRROR}/transactions?transactiontype=CONSENSUSSUBMITMESSAGE&limit=25&order=desc`);
+    if (!res.ok) throw new Error(`Mirror node ${res.status}`);
+    const { transactions=[] } = await res.json();
+    return transactions;
+  }
+
+  function render(txns) {
+    const feed  = document.getElementById('feed');
+    const label = document.getElementById('feed-label');
+    if (!txns.length) { feed.innerHTML='<div class="feed-placeholder">No recent HCS messages found.</div>'; return; }
+
+    const topicFreq = {};
+    const rows = txns.map(tx => {
+      const memo    = b64decode(tx.memo_base64);
+      const isAgent = /hcs-?10/i.test(memo);
+      const payer   = tx.payer_account_id || '—';
+      const topic   = tx.entity_id        || '—';
+      if (topic!=='—') topicFreq[topic] = (topicFreq[topic]||0)+1;
+      const isNew   = !knownIds.has(tx.transaction_id);
+      return `
+      <div class="tx${isAgent?' is-hcs10':''}${isNew?' is-new':''}">
+        <div>
+          <div class="tx-payer">${payer}</div>
+          <div class="tx-topic">→ <a href="${HASHSCAN}/${topic}" target="_blank" rel="noopener"
+            style="color:var(--muted);text-decoration:none;border-bottom:1px dotted var(--border)"
+            onmouseover="this.style.color='var(--accent-light)'"
+            onmouseout="this.style.color='var(--muted)'">topic ${topic}</a></div>
+          ${isAgent?`<div class="tx-memo">${memo.slice(0,48)}${memo.length>48?'…':''}</div><span class="tag">HCS-10</span>`:''}
+        </div>
+        <div class="tx-meta">
+          <div class="tx-time">${timeAgo(tx.consensus_timestamp)}</div>
+          <div class="tx-fee">${fmtFee(tx.charged_tx_fee)}</div>
+        </div>
+      </div>`;
+    });
+
+    feed.innerHTML = rows.join('');
+    knownIds = new Set(txns.map(t=>t.transaction_id));
+    label.textContent = `${txns.length} most recent`;
+    renderTopics(topicFreq);
+  }
+
+  /* ══ TOPICS PANEL ════════════════════════════════════════ */
+
+  async function fetchTopicMemo(topicId) {
+    if (topicMemo[topicId]!==undefined) return topicMemo[topicId];
+    try {
+      const res  = await fetch(`${MIRROR}/topics/${topicId}`);
+      if (!res.ok) { topicMemo[topicId]=''; return ''; }
+      const data = await res.json();
+      const memo = b64decode(data.memo||'').trim() || data.memo_utf8 || '';
+      topicMemo[topicId] = memo;
+      return memo;
+    } catch { topicMemo[topicId]=''; return ''; }
+  }
+
+  async function renderTopics(topicFreq) {
+    const list   = document.getElementById('topics-list');
+    const count  = document.getElementById('topics-count');
+    const sorted = Object.entries(topicFreq).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    if (!sorted.length) { list.innerHTML='<p style="font-size:12px;color:var(--muted)">No topics in current window.</p>'; return; }
+    count.textContent = `— ${sorted.length} active`;
+    list.innerHTML = sorted.map(([id,n])=>`
+      <div class="metric">
+        <span class="k" style="display:flex;flex-direction:column;gap:2px;min-width:0">
+          <a href="${HASHSCAN}/${id}" target="_blank" rel="noopener"
+            style="color:var(--accent-light);text-decoration:none;font-family:monospace;font-size:11px;font-weight:600">${id}</a>
+          <span id="topic-memo-${id}" style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">fetching…</span>
+        </span>
+        <span class="v" style="white-space:nowrap;margin-left:8px">${n} msg${n>1?'s':''}</span>
+      </div>`).join('');
+    sorted.forEach(async ([id]) => {
+      const memo = await fetchTopicMemo(id);
+      const el   = document.getElementById(`topic-memo-${id}`);
+      if (el) el.textContent = memo || '(no memo)';
+    });
+  }
+
+  /* ══ ECOSYSTEM STATS (npm + cost) ════════════════════════ */
+
+  async function fetchNpmDownloads(pkg) {
+    try {
+      const res = await fetch(`https://api.npmjs.org/downloads/point/last-week/${encodeURIComponent(pkg)}`);
+      if (!res.ok) return null;
+      return (await res.json()).downloads ?? null;
+    } catch { return null; }
+  }
+
+  async function fetchCostStat() {
+    try {
+      const [rateRes, txRes] = await Promise.all([
+        fetch(`${MIRROR}/network/exchangerate`),
+        fetch(`${MIRROR}/transactions?transactiontype=CONSENSUSSUBMITMESSAGE&limit=25&order=desc`),
+      ]);
+      const rateData = await rateRes.json();
+      const usdPerHbar = (rateData.current_rate.cent_equivalent / rateData.current_rate.hbar_equivalent) / 100;
+      const fees = ((await txRes.json()).transactions || []).map(t=>t.charged_tx_fee||0).filter(f=>f>0);
+      if (!fees.length) return;
+      const avgHbar = (fees.reduce((a,b)=>a+b,0) / fees.length) / 1e8;
+      const cost1k  = avgHbar * 1000 * usdPerHbar;
+      document.getElementById('s-cost').textContent = `$${cost1k < 0.01 ? cost1k.toFixed(3) : cost1k.toFixed(2)}`;
+    } catch { /* leave as — */ }
+  }
+
+  async function refreshEcosystemStats() {
+    const [sdk, mcp] = await Promise.all([
+      fetchNpmDownloads('hedera-agent-kit'),
+      fetchNpmDownloads('@hedera-mcp/hedera-mcp-server'),
+    ]);
+    document.getElementById('s-sdk').textContent = fmtNum(sdk);
+    document.getElementById('s-mcp').textContent = fmtNum(mcp);
+    fetchCostStat();
+  }
+
+  /* ══ TREND CHART ═════════════════════════════════════════ */
+
+  async function fetchBucket(gteStr, lteStr, cap=5000) {
+    let total=0, hcs10=0, afterTs=null;
+    while (total<cap) {
+      const tsFilter = afterTs
+        ? `timestamp=gt:${afterTs}&timestamp=lte:${lteStr}`
+        : `timestamp=gte:${gteStr}&timestamp=lte:${lteStr}`;
+      const url = `${MIRROR}/transactions?transactiontype=CONSENSUSSUBMITMESSAGE&order=asc&limit=100&${tsFilter}`;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) break;
+        const { transactions=[] } = await res.json();
+        if (!transactions.length) break;
+        total += transactions.length;
+        hcs10 += transactions.filter(t=>/hcs-?10/i.test(b64decode(t.memo_base64))).length;
+        if (transactions.length<100) break;
+        afterTs = transactions.at(-1).consensus_timestamp;
+      } catch { break; }
+    }
+    return { total, hcs10, capped: total>=cap };
+  }
+
+  async function fetchTrend() {
+    const cfg = RANGES[currentRange];
+    const now = Date.now()/1000;
+    const buckets = Array.from({length:cfg.n},(_,i)=>{
+      const lte = now-(cfg.n-1-i)*cfg.secs;
+      const gte = lte-cfg.secs;
+      return { gteStr:gte.toFixed(9), lteStr:lte.toFixed(9), label:cfg.label(lte) };
+    });
+    const results = await Promise.all(buckets.map(b=>fetchBucket(b.gteStr,b.lteStr,cfg.cap)));
+    return buckets.map((b,i)=>({label:b.label,...results[i]}));
+  }
+
+  function renderChart(data) {
+    const cfg  = RANGES[currentRange];
+    const el   = document.getElementById('chart-body');
+    const lbl  = document.getElementById('chart-label');
+    const maxV = Math.max(...data.map(d=>d.total),1);
+    const N    = cfg.n;
+
+    document.getElementById('chart-title').textContent = `(${cfg.title})`;
+
+    const W=900, H=160, pad={top:24,right:16,bottom:30,left:36};
+    const pw=W-pad.left-pad.right, ph=H-pad.top-pad.bottom;
+    const gw=pw/N, bw=gw*0.3;
+
+    const yLines = [0,0.5,1].map(p=>{
+      const y=pad.top+ph-p*ph, v=Math.round(p*maxV);
+      return `<line x1="${pad.left}" y1="${y}" x2="${W-pad.right}" y2="${y}" stroke="#1e2d4a" stroke-width="1" ${p===0?'':'stroke-dasharray="3,4"'}/>
+        <text x="${pad.left-5}" y="${y+3.5}" text-anchor="end" fill="#64748b" font-size="9">${v}</text>`;
+    }).join('');
+
+    const bars = data.map((d,i)=>{
+      const cx=pad.left+i*gw+gw/2, gap=2;
+      const x1=cx-bw-gap/2, x2=cx+gap/2;
+      const th=(d.total/maxV)*ph, ah=(d.hcs10/maxV)*ph;
+      const ty=pad.top+ph-th, ay=pad.top+ph-ah;
+      return `
+        <rect x="${x1}" y="${ty}" width="${bw}" height="${Math.max(th,0)}" rx="2" fill="#4c1d95" opacity="0.85"/>
+        ${d.total>0?`<text x="${x1+bw/2}" y="${ty-4}" text-anchor="middle" fill="#a78bfa" font-size="8.5" font-weight="600">${d.capped?'5k+':d.total.toLocaleString()}</text>`:''}
+        <rect x="${x2}" y="${ay}" width="${bw}" height="${Math.max(ah,0)}" rx="2" fill="${d.hcs10>0?'#f59e0b':'#1e2d4a'}" opacity="${d.hcs10>0?'0.9':'0.4'}"/>
+        ${d.hcs10>0?`<text x="${x2+bw/2}" y="${ay-4}" text-anchor="middle" fill="#f59e0b" font-size="8.5" font-weight="600">${d.hcs10}</text>`:''}
+        <text x="${cx}" y="${H-5}" text-anchor="middle" fill="#64748b" font-size="9">${d.label}</text>`;
+    }).join('');
+
+    const legend=`
+      <rect x="${W-162}" y="4"  width="10" height="10" rx="2" fill="#4c1d95" opacity="0.85"/>
+      <text x="${W-148}" y="13" fill="#a78bfa" font-size="9.5">All HCS messages</text>
+      <rect x="${W-162}" y="19" width="10" height="10" rx="2" fill="#f59e0b"/>
+      <text x="${W-148}" y="28" fill="#f59e0b" font-size="9.5">HCS-10 agent ops</text>`;
+
+    el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">${yLines}${bars}${legend}</svg>`;
+
+    const tot = data.reduce((s,d)=>s+d.total,0);
+    lbl.textContent = `${tot.toLocaleString()} total messages`;
+
+    // Feed the "messages today" KPI only when on hours view
+    if (currentRange==='hours') {
+      document.getElementById('s-daily').textContent = tot.toLocaleString();
+      document.getElementById('s-daily-sub').textContent = 'HCS consensus msgs · last 24h';
+    }
+  }
+
+  async function refreshTrend() {
+    document.getElementById('chart-label').textContent = 'Loading…';
+    try { renderChart(await fetchTrend()); }
+    catch(err) {
+      document.getElementById('chart-body').innerHTML=`<div class="feed-error">Chart error: ${err.message}</div>`;
+      document.getElementById('chart-label').textContent='Error';
+    }
+  }
+
+  /* ══ PROGRESS BAR ════════════════════════════════════════ */
+
+  function animateBar() {
+    const bar = document.getElementById('refresh-fill');
+    bar.style.transition='none'; bar.style.width='100%';
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      bar.style.transition=`width ${REFRESH}ms linear`; bar.style.width='0%';
+    }));
+  }
+
+  /* ══ MAIN LOOP ═══════════════════════════════════════════ */
+
+  async function refresh() {
+    const ts = document.getElementById('last-updated');
+    try {
+      render(await fetchTxns());
+      ts.textContent=`Updated ${new Date().toLocaleTimeString()}`;
+    } catch(err) {
+      document.getElementById('feed').innerHTML=`<div class="feed-error">Mirror Node error: ${err.message}<br>Retrying in 30s.</div>`;
+      ts.textContent='Error — retrying…';
+    }
+    animateBar();
+  }
+
+  // Boot
+  refresh();
+  refreshTrend();
+  refreshEcosystemStats();
+  setInterval(refresh,              REFRESH);
+  setInterval(refreshTrend,         TREND_REFRESH);
+  setInterval(refreshEcosystemStats, 60 * 60_000); // npm stats hourly
+</script>
+
+</body>
+</html>
