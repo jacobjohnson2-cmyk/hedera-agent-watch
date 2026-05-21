@@ -2,7 +2,7 @@
 
 A live, single-page dashboard showing on-chain AI agent activity on Hedera.
 
-**Live demo:** https://YOUR_USERNAME.github.io/hedera-agent-watch
+**Live demo:** https://jacobjohnson2-cmyk.github.io/hedera-agent-watch
 
 ## What it shows
 
@@ -29,10 +29,10 @@ HCS-10 detection: scans transaction memos and decoded message payloads for the `
 ## Deploy
 
 1. Fork or clone this repo
-2. Replace `YOUR_USERNAME` in `index.html` with your GitHub username (currently only used in the footer link back to the awesome list)
+2. Replace `jacobjohnson2-cmyk` in `index.html` with your GitHub username (currently only used in the footer link back to the awesome list)
 3. Push to GitHub
 4. Settings → Pages → Build and deployment → Source: **Deploy from a branch** → Branch: `main` / `(root)` → Save
-5. Wait ~1 minute. Site goes live at `https://YOUR_USERNAME.github.io/hedera-agent-watch`
+5. Wait ~1 minute. Site goes live at `https://jacobjohnson2-cmyk.github.io/hedera-agent-watch`
 
 That's it. No environment variables, no API keys.
 

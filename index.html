@@ -509,7 +509,7 @@
       <div class="card">
         <h3>Resources</h3>
         <p>The full Hedera AI stack — SDKs, MCP servers, standards, payment rails — catalogued in one place.</p>
-        <a class="btn btn-outline" href="https://github.com/YOUR_USERNAME/awesome-hedera-ai" target="_blank" rel="noopener">awesome-hedera-ai →</a>
+        <a class="btn btn-outline" href="https://github.com/jacobjohnson2-cmyk/awesome-hedera-ai" target="_blank" rel="noopener">awesome-hedera-ai →</a>
       </div>
 
     </div>
@@ -530,10 +530,10 @@
   const TREND_REFRESH = 5 * 60_000;
 
   const RANGES = {
-    hours: { n:8,  secs:3*3600,      cap:5000,  label: ts => fmtHour(ts),  title:'last 24h · 3h buckets' },
-    days:  { n:7,  secs:24*3600,     cap:5000,  label: ts => fmtDay(ts),   title:'last 7 days' },
-    weeks: { n:4,  secs:7*24*3600,   cap:10000, label: ts => fmtDate(ts),  title:'last 4 weeks' },
-    month: { n:10, secs:3*24*3600,   cap:5000,  label: ts => fmtDate(ts),  title:'last 30 days · 3d buckets' },
+    hours: { n:8,  secs:3*3600,      label: ts => fmtHour(ts),  title:'last 24h · 3h buckets · estimated' },
+    days:  { n:7,  secs:24*3600,     label: ts => fmtDay(ts),   title:'last 7 days · estimated' },
+    weeks: { n:4,  secs:7*24*3600,   label: ts => fmtDate(ts),  title:'last 4 weeks · estimated' },
+    month: { n:10, secs:3*24*3600,   label: ts => fmtDate(ts),  title:'last 30 days · 3d buckets · estimated' },
   };
   let currentRange = 'hours';
 
@@ -744,25 +744,38 @@
 
   /* ══ TREND CHART ═════════════════════════════════════════ */
 
-  async function fetchBucket(gteStr, lteStr, cap=5000) {
-    let total=0, hcs10=0, afterTs=null;
-    while (total<cap) {
-      const tsFilter = afterTs
-        ? `timestamp=gt:${afterTs}&timestamp=lte:${lteStr}`
-        : `timestamp=gte:${gteStr}&timestamp=lte:${lteStr}`;
-      const url = `${MIRROR}/transactions?transactiontype=CONSENSUSSUBMITMESSAGE&order=asc&limit=100&${tsFilter}`;
-      try {
-        const res = await fetch(url);
-        if (!res.ok) break;
-        const { transactions=[] } = await res.json();
-        if (!transactions.length) break;
-        total += transactions.length;
-        hcs10 += transactions.filter(t=>/hcs-?10/i.test(b64decode(t.memo_base64))).length;
-        if (transactions.length<100) break;
-        afterTs = transactions.at(-1).consensus_timestamp;
-      } catch { break; }
-    }
-    return { total, hcs10, capped: total>=cap };
+  // Sample the first 100 transactions in a bucket and extrapolate to the full bucket.
+  // Mirror Node has no count endpoint, and pages of 100 across thousands of msgs/hour
+  // would blow the 50 RPS limit. One call per bar, rate-projected — gives meaningful
+  // relative differences instead of hitting a cap on every bucket.
+  async function fetchBucket(gteStr, lteStr, bucketSecs) {
+    const url = `${MIRROR}/transactions?transactiontype=CONSENSUSSUBMITMESSAGE&order=asc&limit=100&timestamp=gte:${gteStr}&timestamp=lte:${lteStr}`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return { total:0, hcs10:0, estimated:false };
+      const { transactions=[] } = await res.json();
+      if (!transactions.length) return { total:0, hcs10:0, estimated:false };
+
+      const hcs10InSample = transactions.filter(t=>/hcs-?10/i.test(b64decode(t.memo_base64))).length;
+
+      // Fewer than a full page = exact count
+      if (transactions.length < 100) {
+        return { total: transactions.length, hcs10: hcs10InSample, estimated:false };
+      }
+
+      // Full page — extrapolate from the time span the 100 messages cover
+      const firstTs = parseFloat(transactions[0].consensus_timestamp);
+      const lastTs  = parseFloat(transactions.at(-1).consensus_timestamp);
+      const sampleSecs = lastTs - firstTs;
+      if (sampleSecs <= 0) return { total: 100, hcs10: hcs10InSample, estimated:false };
+
+      const ratio = bucketSecs / sampleSecs;
+      return {
+        total: Math.round(100 * ratio),
+        hcs10: Math.round(hcs10InSample * ratio),
+        estimated: true,
+      };
+    } catch { return { total:0, hcs10:0, estimated:false }; }
   }
 
   async function fetchTrend() {
@@ -773,7 +786,7 @@
       const gte = lte-cfg.secs;
       return { gteStr:gte.toFixed(9), lteStr:lte.toFixed(9), label:cfg.label(lte) };
     });
-    const results = await Promise.all(buckets.map(b=>fetchBucket(b.gteStr,b.lteStr,cfg.cap)));
+    const results = await Promise.all(buckets.map(b=>fetchBucket(b.gteStr,b.lteStr,cfg.secs)));
     return buckets.map((b,i)=>({label:b.label,...results[i]}));
   }
 
@@ -796,16 +809,18 @@
         <text x="${pad.left-5}" y="${y+3.5}" text-anchor="end" fill="#64748b" font-size="9">${v}</text>`;
     }).join('');
 
+    const fmtBar = n => n>=1000 ? `${(n/1000).toFixed(1)}k` : n.toLocaleString();
     const bars = data.map((d,i)=>{
       const cx=pad.left+i*gw+gw/2, gap=2;
       const x1=cx-bw-gap/2, x2=cx+gap/2;
       const th=(d.total/maxV)*ph, ah=(d.hcs10/maxV)*ph;
       const ty=pad.top+ph-th, ay=pad.top+ph-ah;
+      const prefix = d.estimated ? '~' : '';
       return `
         <rect x="${x1}" y="${ty}" width="${bw}" height="${Math.max(th,0)}" rx="2" fill="#4c1d95" opacity="0.85"/>
-        ${d.total>0?`<text x="${x1+bw/2}" y="${ty-4}" text-anchor="middle" fill="#a78bfa" font-size="8.5" font-weight="600">${d.capped?'5k+':d.total.toLocaleString()}</text>`:''}
+        ${d.total>0?`<text x="${x1+bw/2}" y="${ty-4}" text-anchor="middle" fill="#a78bfa" font-size="8.5" font-weight="600">${prefix}${fmtBar(d.total)}</text>`:''}
         <rect x="${x2}" y="${ay}" width="${bw}" height="${Math.max(ah,0)}" rx="2" fill="${d.hcs10>0?'#f59e0b':'#1e2d4a'}" opacity="${d.hcs10>0?'0.9':'0.4'}"/>
-        ${d.hcs10>0?`<text x="${x2+bw/2}" y="${ay-4}" text-anchor="middle" fill="#f59e0b" font-size="8.5" font-weight="600">${d.hcs10}</text>`:''}
+        ${d.hcs10>0?`<text x="${x2+bw/2}" y="${ay-4}" text-anchor="middle" fill="#f59e0b" font-size="8.5" font-weight="600">${prefix}${fmtBar(d.hcs10)}</text>`:''}
         <text x="${cx}" y="${H-5}" text-anchor="middle" fill="#64748b" font-size="9">${d.label}</text>`;
     }).join('');
 
